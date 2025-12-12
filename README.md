@@ -47,4 +47,224 @@ Both UIs let you switch memory backends at runtime.
 - Default `MODEL_ID` targets the 4-bit Qwen3-VL Instruct MLX build. If you switch to a text-only MLX model, set `MODEL_KIND=lm`.
 - The loader uses `trust_remote_code=True` because some MLX chat models ship custom tokenizers/processors; only point it at repos you trust.
 
+## Hybrid Memory System
+
+Hybrid memory system with multiple storage types.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Hybrid Memory System                      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+        ┌──────────────────────────────────────┐
+        │      Message Input (ChatMessage)     │
+        └──────────────────────────────────────┘
+                              │
+        ┌─────────────────────┴─────────────────────┐
+        │                                           │
+        ▼                                           ▼
+┌───────────────┐                        ┌───────────────┐
+│ PII Detection │                        │Poisoning      │
+│ & Scrubbing   │                        │Defense        │
+└───────────────┘                        └───────────────┘
+        │                                           │
+        └─────────────────────┬─────────────────────┘
+                              ▼
+        ┌──────────────────────────────────────┐
+        │      Event Extraction Pipeline        │
+        └──────────────────────────────────────┘
+                              │
+        ┌─────────────────────┴─────────────────────┐
+        │                                           │
+        ▼                                           ▼
+┌──────────────────┐                    ┌──────────────────┐
+│  Working Buffer  │                    │ Episodic Events  │
+│  (Current Chat)  │                    │  (What/When)     │
+└──────────────────┘                    └──────────────────┘
+                              │
+                              ▼
+        ┌──────────────────────────────────────┐
+        │      Fact Extraction                 │
+        └──────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │ Semantic Facts   │
+                    │ (Facts/Entities) │
+                    └──────────────────┘
+                              │
+                              ▼
+        ┌──────────────────────────────────────┐
+        │      Summarization (Periodic)        │
+        └──────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │ Memory Summaries │
+                    │ (Compressed)     │
+                    └──────────────────┘
+```
+
+### Memory Stores
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Hybrid Memory Stores                       │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │  Semantic    │  │  Episodic    │  │   Summary    │      │
+│  │  Memory      │  │  Memory      │  │   Memory     │      │
+│  ├──────────────┤  ├──────────────┤  ├──────────────┤      │
+│  │ • Facts      │  │ • Events     │  │ • Summaries  │      │
+│  │ • Entities   │  │ • Timestamps │  │ • Topics     │      │
+│  │ • Relations  │  │ • Topics     │  │ • Compressed │      │
+│  │ • Categories │  │ • Actors     │  │ • Time-based │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Retrieval Pipeline
+
+```
+Query
+  │
+  ▼
+┌─────────────────┐
+│ Retrieve from   │
+│ Multiple Stores │
+└────────┬────────┘
+         │
+    ┌────┴────┬──────────────┬──────────────┐
+    │         │              │              │
+    ▼         ▼              ▼              ▼
+┌────────┐ ┌────────┐  ┌────────┐  ┌────────┐
+│Semantic│ │Episodic│  │Summary │  │Working │
+│ Facts  │ │ Events │  │Summaries│ │ Buffer │
+└───┬────┘ └───┬────┘  └───┬────┘  └───┬────┘
+    │          │            │            │
+    └──────────┴────────────┴────────────┘
+                   │
+                   ▼
+         ┌──────────────────┐
+         │  Score & Rerank  │
+         └─────────┬────────┘
+                   │
+                   ▼
+         ┌──────────────────┐
+         │   Top-K Results  │
+         │   + Rationale    │
+         └──────────────────┘
+```
+
+### Backend Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    HybridMemory                              │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
+                  ┌──────────────────┐
+                  │  MemoryBackend   │
+                  │   (Interface)    │
+                  └────────┬─────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+        ▼                  ▼                  ▼
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│  InMemory    │  │   SQLite     │  │  PostgreSQL  │
+│  Backend     │  │   Backend    │  │  Backend     │
+│              │  │              │  │  (future)    │
+│ • Dict-based │  │ • File-based │  │              │
+│ • Fast       │  │ • Persistent │  │              │
+│ • Testing    │  │ • Local      │  │              │
+└──────────────┘  └──────────────┘  └──────────────┘
+```
+
+### Quick Start
+
+```python
+from llmmemory.memory.hybrid import HybridMemory
+from llmmemory.memory.hybrid.backends import SQLiteBackend
+from llmmemory.memory.base import ChatMessage
+
+# Create memory system
+memory = HybridMemory(backend=SQLiteBackend("memory.db"))
+
+# Add messages
+memory.append(ChatMessage(role="user", content="My name is Alice"))
+memory.append(ChatMessage(role="user", content="I love Python"))
+
+# Retrieve memories
+from llmmemory.memory.hybrid.types import RetrievalOptions
+result = memory.retrieve(RetrievalOptions(query="What does the user like?", max_results=5))
+```
+
+### Data Flow
+
+```
+User Message
+     │
+     ├─► PII Detection & Scrubbing
+     ├─► Poisoning Defense
+     │
+     ├─► Working Buffer (current conversation)
+     ├─► Event Extraction → Episodic Memory
+     ├─► Fact Extraction → Semantic Memory
+     │
+     └─► Periodic Summarization → Summary Memory
+```
+
+### Features
+
+✅ **Hybrid Memory Architecture**
+- Semantic memory (facts, entities, relationships)
+- Episodic memory (events with temporal context)
+- Summary memory (compressed summaries)
+
+✅ **Pluggable Backends**
+- InMemoryBackend (for testing)
+- SQLiteBackend (local storage)
+- Easy to extend with PostgreSQL, Redis, vector DBs
+
+✅ **Safety Features**
+- PII detection and scrubbing
+- Protection against prompt injection attacks
+- Audit logging
+
+✅ **Inspection Tools**
+- CLI tool to view memory
+- See why memories were retrieved
+- Statistics and debugging
+
+✅ **Testing Tools**
+- Accuracy tests
+- Performance benchmarks
+- Safety tests
+
+### Documentation
+
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get started in 5 minutes
+- **[Memory System Docs](docs/MEMORY_SYSTEM.md)** - API reference
+- **[Examples](examples/hybrid_memory_example.py)** - Usage examples
+
+### CLI Tools
+
+```bash
+# Inspect memory state
+python3 -m llmmemory.cli.inspect --command stats
+
+# View semantic facts
+python3 -m llmmemory.cli.inspect --command facts --query "preference"
+
+# Export memory
+python3 -m llmmemory.cli.inspect --command export --output json
+```
+
 

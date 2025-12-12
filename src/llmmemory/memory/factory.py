@@ -10,6 +10,13 @@ from .claude import KnowledgeBase, ProjectMemory
 from .custom import BufferMemory, SummaryMemory, VectorMemory
 from .grok import ContextAwareMemory
 from .mem0 import Mem0Adapter
+try:
+    from .hybrid import HybridMemory
+    from .hybrid.backends import InMemoryBackend, SQLiteBackend
+except ImportError:
+    HybridMemory = None
+    InMemoryBackend = None
+    SQLiteBackend = None
 
 
 def create_memory(
@@ -97,6 +104,31 @@ def create_memory(
             )
         else:
             raise ValueError(f"Unknown custom implementation: {implementation}")
+
+    elif system == "hybrid":
+        if HybridMemory is None:
+            raise ValueError("Hybrid memory system not available (missing dependencies)")
+        
+        if implementation == "hybrid":
+            # Determine backend
+            backend_type = kwargs.get("backend_type", "memory")
+            if backend_type == "sqlite" and SQLiteBackend:
+                backend = SQLiteBackend(db_path=kwargs.get("db_path", "memory.db"))
+            else:
+                backend = InMemoryBackend() if InMemoryBackend else None
+            
+            if backend is None:
+                raise ValueError("No suitable backend available")
+            
+            return HybridMemory(
+                backend=backend,
+                policy=kwargs.get("policy"),
+                working_buffer_size=kwargs.get("working_buffer_size", 20),
+                enable_pii_detection=kwargs.get("enable_pii_detection", True),
+                enable_poisoning_defense=kwargs.get("enable_poisoning_defense", True),
+            )
+        else:
+            raise ValueError(f"Unknown production implementation: {implementation}")
 
     else:
         raise ValueError(f"Unknown memory system: {system}")
