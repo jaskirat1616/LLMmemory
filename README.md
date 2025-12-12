@@ -1,6 +1,6 @@
 # LLMmemory
 
-![LLMmemory logo](./75fc9d80-062a-453d-8399-a931afb16f65.jpg)
+![LLMmemory logo](./Capture-2025-12-11-164215.png)
 
 Local playground for experimenting with chat-style memory systems (buffer, summary, vector-style recall, etc.) powered by an MLX-hosted model. Current default: `mlx-community/Qwen3-VL-8B-Instruct-4bit` (MLX VLM build) [HF card](https://huggingface.co/mlx-community/Qwen3-VL-8B-Instruct-4bit).
 
