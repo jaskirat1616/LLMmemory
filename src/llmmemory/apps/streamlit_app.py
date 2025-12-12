@@ -1,16 +1,9 @@
 import streamlit as st
 
 from llmmemory.chat import ChatSession
-from llmmemory.config import ModelConfig
-from llmmemory.memory import BufferMemory, SummaryMemory, VectorMemory
+from llmmemory.config import MEMORY_SYSTEMS, ModelConfig
+from llmmemory.memory.factory import create_memory
 from llmmemory.models.loader import load_model
-
-
-MEMORY_FACTORIES = {
-    "buffer": lambda: BufferMemory(max_messages=50),
-    "summary": lambda: SummaryMemory(buffer_size=8, summarize_every=8),
-    "vector": lambda: VectorMemory(dim=512, max_messages=200),
-}
 
 
 @st.cache_resource(show_spinner=True)
@@ -18,22 +11,28 @@ def _load_model_cached(model_id: str, model_kind: str):
     return load_model(model_id, model_kind=model_kind)
 
 
-def _ensure_session(memory_kind: str) -> ChatSession:
+def _ensure_session(memory_system: str, memory_implementation: str) -> ChatSession:
     cfg = st.session_state.get("model_config") or ModelConfig()
     st.session_state.model_config = cfg
 
     model, tokenizer, kind = _load_model_cached(cfg.model_id, cfg.model_kind)
 
+    # Create unique key for session
+    session_key = f"{memory_system}:{memory_implementation}:{kind}:{cfg.model_id}"
+
     if (
         "chat_session" not in st.session_state
-        or st.session_state.get("memory_kind") != memory_kind
-        or st.session_state.get("model_kind") != kind
-        or st.session_state.get("model_id") != cfg.model_id
+        or st.session_state.get("session_key") != session_key
     ):
-        memory = MEMORY_FACTORIES[memory_kind]()
-        st.session_state.memory_kind = memory_kind
-        st.session_state.model_kind = kind
-        st.session_state.model_id = cfg.model_id
+        # Create memory using factory
+        memory = create_memory(
+            system=memory_system,
+            implementation=memory_implementation,
+            model=model,
+            tokenizer=tokenizer,
+            model_config=cfg,
+        )
+        st.session_state.session_key = session_key
         st.session_state.chat_session = ChatSession(
             memory=memory,
             model=model,
@@ -46,24 +45,49 @@ def _ensure_session(memory_kind: str) -> ChatSession:
 
 def main():
     st.set_page_config(page_title="LLMmemory (MLX)", page_icon="🧠", layout="wide")
-    st.title("LLMmemory — MLX local chat")
+    st.title("LLMmemory — Multi-Memory System Playground")
 
     with st.sidebar:
-        st.markdown("### Settings")
-        memory_kind = st.radio(
-            "Memory backend",
-            options=list(MEMORY_FACTORIES.keys()),
+        st.markdown("### Memory System")
+        
+        # First dropdown: Select memory system
+        memory_system = st.selectbox(
+            "Memory System",
+            options=list(MEMORY_SYSTEMS.keys()),
             format_func=lambda x: x.capitalize(),
-            index=0,
+            index=4,  # Default to "custom"
         )
+        
+        # Second dropdown: Select implementation within system
+        implementations = MEMORY_SYSTEMS[memory_system]
+        memory_implementation = st.selectbox(
+            "Implementation",
+            options=implementations,
+            format_func=lambda x: x.replace("_", " ").title(),
+        )
+        
+        # Display README if available
+        try:
+            import os
+            readme_path = f"src/llmmemory/memory/{memory_system}/README.md"
+            if os.path.exists(readme_path):
+                with open(readme_path, "r") as f:
+                    readme_content = f.read()
+                with st.expander("📖 About this memory system"):
+                    st.markdown(readme_content)
+        except Exception:
+            pass
+        
+        st.markdown("---")
+        st.markdown("### Model Settings")
         cfg = st.session_state.get("model_config") or ModelConfig()
         cfg.temperature = st.slider("Temperature", 0.0, 1.5, cfg.temperature, 0.05)
         cfg.max_tokens = st.number_input("Max tokens", 16, 1024, cfg.max_tokens, 8)
         st.session_state.model_config = cfg
 
-    session = _ensure_session(memory_kind)
+    session = _ensure_session(memory_system, memory_implementation)
 
-    # display history
+    # Display history
     for msg in session.memory.get_context():
         if msg.role == "system":
             continue
@@ -84,4 +108,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

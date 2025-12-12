@@ -22,3 +22,12 @@ SYSTEM_PROMPT = os.getenv(
     "You are a concise, helpful assistant. Keep replies brief unless asked.",
 )
 
+
+# Memory system registry
+MEMORY_SYSTEMS = {
+    "chatgpt": ["conversation_buffer", "entity_memory"],
+    "claude": ["project_memory", "knowledge_base"],
+    "grok": ["context_aware"],
+    "mem0": ["mem0_adapter"],
+    "custom": ["buffer", "summary", "vector"],
+}
