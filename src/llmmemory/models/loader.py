@@ -97,12 +97,19 @@ def generate_reply(
 
         output = generate_vlm(
             model=model,
-            tokenizer=tokenizer,
+            processor=tokenizer,  # For VLM, tokenizer is actually the processor
             prompt=prompt,
             max_tokens=config.max_tokens,
             temp=config.temperature,
             stream=False,
         )
+        # Extract text from GenerationResult object
+        if hasattr(output, 'text'):
+            return output.text.strip()
+        elif isinstance(output, str):
+            return output.strip()
+        else:
+            return str(output)
     else:
         try:
             from mlx_lm import generate as generate_lm
@@ -119,6 +126,5 @@ def generate_reply(
             temp=config.temperature,
             stream=False,
         )
-
-    return output.strip() if isinstance(output, str) else str(output)
+        return output.strip() if isinstance(output, str) else str(output)
 

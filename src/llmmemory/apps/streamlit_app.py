@@ -49,7 +49,7 @@ def main():
 
     with st.sidebar:
         st.markdown("### Memory System")
-        
+
         # First dropdown: Select memory system
         memory_system = st.selectbox(
             "Memory System",
@@ -57,7 +57,7 @@ def main():
             format_func=lambda x: x.capitalize(),
             index=4,  # Default to "custom"
         )
-        
+
         # Second dropdown: Select implementation within system
         implementations = MEMORY_SYSTEMS[memory_system]
         memory_implementation = st.selectbox(
@@ -65,7 +65,7 @@ def main():
             options=implementations,
             format_func=lambda x: x.replace("_", " ").title(),
         )
-        
+
         # Display README if available
         try:
             import os
@@ -77,13 +77,29 @@ def main():
                     st.markdown(readme_content)
         except Exception:
             pass
-        
+
         st.markdown("---")
         st.markdown("### Model Settings")
         cfg = st.session_state.get("model_config") or ModelConfig()
         cfg.temperature = st.slider("Temperature", 0.0, 1.5, cfg.temperature, 0.05)
         cfg.max_tokens = st.number_input("Max tokens", 16, 1024, cfg.max_tokens, 8)
         st.session_state.model_config = cfg
+
+        # Show memory stats if available
+        st.markdown("---")
+        st.markdown("### Memory Stats")
+        if "chat_session" in st.session_state:
+            memory = st.session_state.chat_session.memory
+            context = memory.get_context()
+            st.metric("Messages in Context", len(context))
+
+            # Show facts if EntityMemory
+            if hasattr(memory, "get_facts"):
+                facts = memory.get_facts()
+                st.metric("Facts Stored", len(facts))
+                if facts and st.checkbox("Show stored facts"):
+                    for fact in facts[-5:]:  # Show last 5 facts
+                        st.caption(f"• {fact.fact}")
 
     session = _ensure_session(memory_system, memory_implementation)
 
@@ -92,18 +108,18 @@ def main():
         if msg.role == "system":
             continue
         with st.chat_message(msg.role):
-            st.write(msg.content)
+            st.markdown(msg.content)
 
     user_input = st.chat_input("Message the model...")
     if user_input:
         with st.chat_message("user"):
-            st.write(user_input)
+            st.markdown(user_input)
         session.add_user_message(user_input)
 
         with st.chat_message("assistant"):
             with st.spinner("Generating..."):
                 reply = session.generate_assistant_reply()
-                st.write(reply)
+                st.markdown(reply)
 
 
 if __name__ == "__main__":
