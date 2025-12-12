@@ -1,3 +1,4 @@
+
 <p align="center">
   <img src="./logo.png" alt="LLMmemory logo" width="220" />
 </p>
@@ -247,12 +248,6 @@ User Message
 - Accuracy tests
 - Performance benchmarks
 - Safety tests
-
-### Documentation
-
-- **[Quick Start Guide](docs/QUICKSTART.md)** - Get started in 5 minutes
-- **[Memory System Docs](docs/MEMORY_SYSTEM.md)** - API reference
-- **[Examples](examples/hybrid_memory_example.py)** - Usage examples
 
 ### CLI Tools
 
