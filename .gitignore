@@ -4,3 +4,9 @@ env/
 ENV/
 *.md
 !README.md
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+!docs/*.md
