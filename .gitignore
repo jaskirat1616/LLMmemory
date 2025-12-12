@@ -2,3 +2,5 @@
 venv/
 env/
 ENV/
+*.md
+!README.md
